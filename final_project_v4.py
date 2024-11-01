@@ -1,47 +1,31 @@
 ######################################## import required packages
-# Standard library imports
-from pathlib import Path
-import pickle
-import time
-
-# Third-party imports
-import featuretools as ft
-import joblib
-import matplotlib.pyplot as plt
-from matplotlib.pyplot import show, plot
-import missingno as msno
-import numpy as np
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 import seaborn as sns
-import statsmodels.api as sm
-from imblearn.over_sampling import SMOTE
-from imblearn.pipeline import Pipeline as ImbPipeline
-from pyampute.exploration.mcar_statistical_tests import MCARTest
-from scipy.stats import chi2_contingency
-from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier, RandomForestRegressor
-from sklearn.experimental import enable_iterative_imputer
+from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold, cross_val_score
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_auc_score, f1_score, make_scorer
 from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
-from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn.metrics import (accuracy_score, auc, classification_report,
-                             confusion_matrix, f1_score, roc_auc_score, roc_curve,make_scorer)
-from sklearn.model_selection import (GridSearchCV, KFold, StratifiedKFold,
-                                     cross_val_score, train_test_split)
-from sklearn.naive_bayes import GaussianNB
-from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import (MinMaxScaler, Normalizer, RobustScaler,
-                                   StandardScaler)
-from sklearn.svm import SVC
-from sklearn.ensemble import StackingClassifier
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
+from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
 from xgboost import XGBClassifier
+from sklearn.svm import SVC
+from sklearn.neural_network import MLPClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.linear_model import LogisticRegression
+import missingno as msno
+from scipy.stats import chi2_contingency
+from joblib import dump, load
+import pickle
+from pathlib import Path
 
-# Start timing
-start_time = time.time()
+
 
 ######################################## load the data 
 # load and preprocess the dataset
-base_path = Path(__file__).resolve().parent / 'data'
+base_path = Path(__file__).resolve().parent.parent / 'data'
     
 # Define the path to the CSV file
 data_path = base_path / 'diabetes.csv'
@@ -62,8 +46,7 @@ print(df.isnull().sum())
 # Histograms for each feature
 df.hist(bins=20, figsize=(14, 7), layout=(3, 3))  # Smaller figure size and 3x3 grid layout
 plt.tight_layout()  # Adjusts subplot parameters for a neat fit
-plt.savefig(base_path / 'histograms.png')
-plt.close()
+plt.show()
 
 # boxplot
 num_columns = len(df.columns)  # Number of columns 
@@ -90,28 +73,24 @@ for i, column in enumerate(df.columns):
 # Adjust layout 
 plt.tight_layout()
 plt.subplots_adjust(wspace=0.5, hspace=0.6)  # Adjust horizontal and vertical spaces
-plt.savefig(base_path / 'boxplots.png')
-plt.close()
+plt.show()
 
 # Correlation matrix
 plt.figure(figsize=(12, 7))
 sns.heatmap(df.corr(), annot=True, fmt=".2f", cmap='coolwarm')
-plt.savefig(base_path / 'correlation_matrix.png')
-plt.close()
+plt.show()
 
 # Create a pair plot with adjusted size
 plt.figure(dpi=300)
 sns.pairplot(df, hue='Outcome', height=3, aspect=1)
 plt.tight_layout()  # Adjust layout to make room for all elements
-plt.savefig(base_path / 'pairplot.png')
-plt.close()
+plt.show()
 
 # Scatter plots for specific variables
 plt.figure(figsize=(8, 6))
 sns.scatterplot(x='Glucose', y='BMI', hue='Outcome', data=df)
 plt.title('Glucose vs BMI colored by Outcome')
-plt.savefig(base_path / 'glucose_vs_bmi.png')
-plt.close()
+plt.show()
 
 ######################################## preprocessing
 columns_with_zeros = ['Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI']
@@ -124,8 +103,7 @@ print(missing_percentage)
 
 # Matrix plot to visualize missing data
 msno.matrix(df[columns_with_zeros])
-plt.savefig(base_path / 'missing_data_matrix.png')
-plt.close()
+plt.show()
 
 # Create binary indicators for missing data directly within the DataFrame
 df['Insulin_missing'] = df['Insulin'].isnull().astype(int)
@@ -196,8 +174,8 @@ y = df[target]
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=123)
 
 # Grid Search
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
-grid_search = GridSearchCV(pipeline, param_grid, cv=cv, scoring='roc_auc', verbose=1, n_jobs=-1)
+cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=1234)
+grid_search = GridSearchCV(pipeline, param_grid, cv=cv, scoring='roc_auc', verbose=10, n_jobs=-1)
 grid_search.fit(X_train, y_train)
 
 # Best parameters and score
@@ -228,17 +206,13 @@ test_df = pd.DataFrame(X_test_transformed, columns=feature_names, index=X_test.i
 train_df[target] = y_train
 test_df[target] = y_test
 
-# Output y_train to Excel
-y_train_df = pd.DataFrame(y_train)
-y_train_df.to_excel("y_train.xlsx", index=False)  
-
-# Output y_test to Excel
-y_test_df = pd.DataFrame(y_test)
-y_test_df.to_excel("y_test.xlsx", index=False)
-
 # Combine the transformed train and test sets to get the full imputed dataset
 full_imputed_df = pd.concat([train_df, test_df])
 print(full_imputed_df.shape)
+
+full_imputed_df.to_pickle('full_imputed_df.pkl')
+with open('full_imputed_df.pkl', 'rb') as file:
+    full_imputed_df = pickle.load(file)
 
 # Function to plot correlation matrix
 def plot_correlation(df, title):
@@ -248,8 +222,7 @@ def plot_correlation(df, title):
     plt.title(title)
     plt.xticks(rotation=45)
     plt.yticks(rotation=0)
-    plt.savefig(base_path / f'{title.replace(" ", "_").lower()}_correlation_matrix.png')
-    plt.close()
+    plt.show()
 
 # Plotting correlation matrices
 plot_correlation(full_imputed_df, "Correlation Matrix with Best Imputation")
@@ -349,7 +322,7 @@ print(y_train.value_counts(normalize=True) * 100)
 
 # Create and fit the estimator
 # Setup Stratified K-Fold cross-validation
-kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
+kfold = StratifiedKFold(n_splits=10, shuffle=True, random_state=1234)
 classifier = XGBClassifier(use_label_encoder=False, eval_metric='logloss')
 
 # Parameter grid for Grid Search
@@ -365,12 +338,15 @@ param_grid = {
 
 # Perform Grid Search
 grid_search = GridSearchCV(estimator=classifier, param_grid=param_grid, 
-                           scoring='roc_auc', n_jobs=-1, cv=kfold, verbose=1)
+                           scoring='roc_auc', n_jobs=-1, cv=kfold, verbose=10)
 grid_search.fit(X_train, y_train)
 
 # Best estimator after grid search
 best_classifier = grid_search.best_estimator_
-
+# Save the model
+dump(best_classifier, 'best_classifier.joblib')
+# Load the model
+loaded_model = load('best_classifier.joblib')
 
 
 # Cross-validation results
@@ -397,7 +373,7 @@ auc_scores = []
 n_features_list = range(1, len(sorted_features) + 1)
 
 # Initialize StratifiedKFold
-stratified_kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
+stratified_kfold = StratifiedKFold(n_splits=10, shuffle=True, random_state=1234)
 
 for n in n_features_list:
     selected_features = sorted_features[:n]
@@ -421,9 +397,25 @@ results = {
     'max_auc_score': max_auc_score
 }
 
+# Write the dictionary to a pickle file
+with open('model_results.pkl', 'wb') as file:
+    pickle.dump(results, file)
+
+print("Results saved successfully.")
+
+# Load the results from the pickle file
+with open('model_results.pkl', 'rb') as file:
+    loaded_results = pickle.load(file)
+
+# Access saved data
+auc_scores = loaded_results['auc_scores']
+optimal_features = loaded_results['optimal_features']
+max_auc_score = loaded_results['max_auc_score']
+
+
 # subset to get dataframe
 optimal_feature_names = sorted_features[:optimal_features].tolist()
-optimal_feature_names.append('Outcome')   
+optimal_feature_names.append('Outcome')   # Include target variable if needed for further analysis
 print(optimal_feature_names)
 
 # Subsetting training and testing data with optimal features
@@ -447,8 +439,7 @@ def visualize_distributions(data, title):
         plt.title(feature)
     plt.tight_layout()
     plt.suptitle(title, fontsize=16)
-    plt.savefig(base_path / f'{title.replace(" ", "_").lower()}_distributions.png')
-    plt.close()
+    plt.show()
 
 # Calling the function for both train and test datasets
 visualize_distributions(X_train_optimal, "Training Data Distributions")
@@ -475,7 +466,7 @@ def impute_data(train, test=None, strategy='mean', n_neighbors=5):
     elif strategy == 'mice':
         imputer = IterativeImputer(random_state=1234)
 
-    # Fit on the training data and transform 
+    # Fit on the training data and transform both train and test sets if test is provided
     train_imputed = imputer.fit_transform(train)
     if test is not None:
         test_imputed = imputer.transform(test)
@@ -484,29 +475,26 @@ def impute_data(train, test=None, strategy='mean', n_neighbors=5):
     return train_imputed, test_imputed
 
 # Define the stratified K-Fold and scoring
-cv_strategy = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
+cv_strategy = StratifiedKFold(n_splits=10, shuffle=True, random_state=1234)
 roc_auc_scorer = make_scorer(roc_auc_score, needs_proba=True)
 
 # Evaluate imputation methods
-def evaluate_imputation_methods(X_train_optimal, y_train, strategies, cv_strategy, scorer):
+def evaluate_imputation_methods(X_train, y_train, strategies, scorer):
     imputation_performance = {}
     classifier = RandomForestClassifier(random_state=1234)
 
     for strategy in strategies:
-        X_train_imputed, _ = impute_data(X_train_optimal, strategy=strategy)
+        X_train_imputed, _ = impute_data(X_train, strategy=strategy)  # Impute only train for CV
         scores = cross_val_score(classifier, X_train_imputed, y_train, cv=cv_strategy, scoring=scorer)
         imputation_performance[strategy] = np.mean(scores)
+    
     return imputation_performance
 
 # Main execution block
 strategies = ['mean', 'median', 'most_frequent', 'knn', 'mice']
-roc_auc_scorer = make_scorer(roc_auc_score, needs_threshold=True)
-cv_strategy = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
-
-performance_roc_auc = evaluate_imputation_methods(X_train_optimal, y_train, 
+performance_roc_auc = evaluate_imputation_methods(X_train, y_train, 
                                                   strategies, 
-                                                  cv_strategy,
-                                                  roc_auc_scorer)
+                                                  roc_auc_scorer) 
 
 # Display the performance results
 print("\nROC-AUC Scores by Imputation Method:")
@@ -516,32 +504,23 @@ print(performance_roc_auc)
 best_roc_auc_method = max(performance_roc_auc, key=performance_roc_auc.get)
 
 # Impute using the best ROC-AUC method
-X_train_final, X_test_final = impute_data(X_train_optimal, X_test_optimal, 
+X_train_final, X_test_final = impute_data(X_train, X_test, 
                                           strategy=best_roc_auc_method)  
-
-X_train_final_df = pd.DataFrame(X_train_final, columns=optimal_feature_names)
-X_test_final_df = pd.DataFrame(X_test_final, columns=optimal_feature_names)
-
-# Now you can use the to_excel method and the columns will have proper headers
-X_train_final_df.to_excel('X_train_final.xlsx', index=False)
-X_test_final_df.to_excel('X_test_final.xlsx', index=False)
-
-print("Data has been successfully imputed and saved to Excel files.")
 
 #############
 
-# Define models dictionary
+# Define your models dictionary
 models = {
     'Naive_Bayes': GaussianNB(),
     'Logistic_Regression': LogisticRegression(max_iter=1000),
-    'SVM': SVC(probability=True),
+    'SVM': SVC(probability=True),  # Ensure probability is True for ROC-AUC if using SVM
     'Random_Forest': RandomForestClassifier(),
     'AdaBoost': AdaBoostClassifier(),
     'XGBoost': XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
     'Neural_Network': MLPClassifier()
 }
 
-# Define scalers dictionary
+# Define your scalers dictionary
 scalers = {
     'standard': StandardScaler(),
     'robust': RobustScaler(),
@@ -550,146 +529,45 @@ scalers = {
 
 # Define hyperparameters for each model
 param_grid = {
-    'Naive_Bayes': {
-        'classifier__var_smoothing': np.logspace(0, -9, num=100)
-    },
-    'Logistic_Regression': {
-        'classifier__C': [0.01, 0.1, 1, 10, 100],
-        'classifier__penalty': ['l1', 'l2'],
-        'classifier__solver': ['liblinear', 'saga']
-    },
-    'SVM': {
-        'classifier__C': [0.1, 1, 10, 100],
-        'classifier__kernel': ['linear', 'poly', 'rbf', 'sigmoid'],
-        'classifier__gamma': ['scale', 'auto', 0.01, 0.1, 1]
-    },
-    'Random_Forest': {
-        'classifier__n_estimators': [100, 200, 500],
-        'classifier__max_depth': [None, 10, 20, 30, 50],
-        'classifier__min_samples_split': [2, 5, 10],
-        'classifier__min_samples_leaf': [1, 2, 4]
-    },
-    'AdaBoost': {
-        'classifier__n_estimators': [50, 100, 200, 300],
-        'classifier__learning_rate': [0.01, 0.1, 0.5, 1.0],
-        'classifier__algorithm': ['SAMME', 'SAMME.R']
-    },
-    'XGBoost': {
-        'classifier__n_estimators': [100, 200, 300],
-        'classifier__max_depth': [3, 6, 9, 12],
-        'classifier__learning_rate': [0.01, 0.05, 0.1, 0.2],
-        'classifier__subsample': [0.6, 0.8, 1.0],
-        'classifier__colsample_bytree': [0.6, 0.8, 1.0]
-    },
-    'Neural_Network': {
-        'classifier__hidden_layer_sizes': [(50,), (100,), (100, 50), (150, 100)],
-        'classifier__activation': ['relu', 'tanh', 'logistic'],
-        'classifier__solver': ['sgd', 'adam'],
-        'classifier__alpha': [0.0001, 0.001, 0.01],
-        'classifier__learning_rate': ['constant', 'adaptive'],
-        'classifier__early_stopping': [True],
-        'classifier__validation_fraction': [0.1]
-    }
+    # your existing paramgrid code here
 }
 
 # Setting up Stratified K-Fold
-skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=1234)
+skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=1234)
 
-# Function to run grid search
-def run_grid_search(model_name, model, param_grid, scaler_name='standard'):
-    print(f"Running grid search for {model_name} with {scaler_name}")
-    scaler = scalers[scaler_name]
-    pipeline = Pipeline([
-        ('scaler', scaler),
-        ('classifier', model)
-    ])
-    grid = GridSearchCV(pipeline, param_grid, cv=skf, scoring='roc_auc', verbose=1, n_jobs=-1)
-    grid.fit(X_train_final, y_train)
-    joblib.dump(grid, f'{model_name}_{scaler_name}_grid.pkl')  # Save the fitted grid
-
-# Function to load results and evaluate
-def load_results_and_evaluate(model_name, scaler_name='standard'):
-    grid = joblib.load(f'{model_name}_{scaler_name}_grid.pkl')
-    y_pred = grid.predict(X_test_final)
-    accuracy = accuracy_score(y_test, y_pred)
-    f1 = f1_score(y_test, y_pred, average='binary')
-    roc_auc = roc_auc_score(y_test, grid.predict_proba(X_test_final)[:, 1])
-
-    return {
-        'Model': model_name,
-        'Scaler': scaler_name,
-        'Best Score (ROC-AUC)': grid.best_score_,
-        'Test Accuracy': accuracy,
-        'Test F1 Score': f1,
-        'Test ROC-AUC Score': roc_auc,
-        'Best Params': grid.best_params_
-    }
-
-# Run grid search for each model
-for model_name, model in models.items():
-    run_grid_search(model_name, model, param_grid[model_name])
-
-# Load and compile results
+# Results container
 results = []
-for model_name in models.keys():
-    result = load_results_and_evaluate(model_name)
-    results.append(result)
 
-# Display results
+# Iterate over each model and scaler combination
+for model_name, model in models.items():
+    for scaler_name, scaler in scalers.items():
+        # Setup the pipeline
+        pipeline = Pipeline([
+            ('scaler', scaler),
+            ('classifier', model)
+        ])
+
+        # GridSearchCV with Stratified K-Fold
+        grid = GridSearchCV(pipeline, param_grid[model_name], cv=skf, scoring='roc_auc', verbose=10)
+        grid.fit(X_train_final, y_train)
+
+        # Evaluate on the test set
+        y_pred = grid.predict(X_test_final)
+        accuracy = accuracy_score(y_test, y_pred)
+        f1 = f1_score(y_test, y_pred, average='binary')
+        roc_auc = roc_auc_score(y_test, grid.predict_proba(X_test_final)[:, 1])  # For binary classification
+
+        # Store results
+        results.append({
+            'Model': model_name,
+            'Scaler': scaler_name,
+            'Best Score (ROC-AUC)': grid.best_score_,
+            'Test Accuracy': accuracy,
+            'Test F1 Score': f1,
+            'Test ROC-AUC Score': roc_auc,
+            'Best Params': grid.best_params_
+        })
+
+# Displaying the results might be useful
 for result in results:
     print(result)
-
-# Function to get the best estimator from grid results
-def get_best_estimator(model_name, scaler_name='standard'):
-    grid = joblib.load(f'{model_name}_{scaler_name}_grid.pkl')
-    return grid.best_estimator_
-
-# Collect best models
-best_estimators = [
-    get_best_estimator(model_name)
-    for model_name in models.keys()
-]
-
-# Meta-learner
-meta_learner = LogisticRegression(max_iter=1000)
-
-# Stacked classifier
-stacked_model = StackingClassifier(
-    estimators=[(name, estimator) for name, estimator in zip(models.keys(), best_estimators)],
-    final_estimator=meta_learner,
-    cv=5,
-    n_jobs=-1,
-    passthrough=True
-)
-
-# Train the stacked model
-stacked_model.fit(X_train_final, y_train)
-
-# Evaluate the stacked model
-y_pred_stack = stacked_model.predict(X_test_final)
-accuracy_stack = accuracy_score(y_test, y_pred_stack)
-f1_stack = f1_score(y_test, y_pred_stack, average='binary')
-roc_auc_stack = roc_auc_score(y_test, stacked_model.predict_proba(X_test_final)[:, 1])
-
-# Display results
-stack_results = {
-    'Test Accuracy': accuracy_stack,
-    'Test F1 Score': f1_stack,
-    'Test ROC-AUC Score': roc_auc_stack
-}
-
-print("Stacked Model Performance:", stack_results)
-
-
-
-# # End timing
-# end_time = time.time()
-
-# # Calculate the duration in seconds
-# duration_seconds = end_time - start_time
-
-# # Convert seconds to minutes
-# duration_minutes = duration_seconds / 60
-
-# # Print the duration
-# print(f"The code ran for {duration_minutes:.2f} minutes")
